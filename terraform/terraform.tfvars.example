@@ -1,0 +1,9 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is gitignored: it may contain personal data (your IP).
+
+allowed_ssh_cidr = "203.0.113.7/32" # your public IP: curl -s https://checkip.amazonaws.com
+
+# Optional overrides (defaults are in variables.tf)
+# aws_region   = "eu-west-3"
+# aws_profile  = "greenpulse"
+# project_name = "greenpulse"
