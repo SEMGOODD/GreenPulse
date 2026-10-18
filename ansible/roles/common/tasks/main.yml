@@ -1,0 +1,38 @@
+---
+# Common role: baseline applied to every VM before any service is installed.
+
+- name: Upgrade all packages to their latest version
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: "{{ common_apt_cache_valid_time }}"
+    upgrade: safe
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+
+- name: Set the timezone
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+
+- name: Enable automatic security updates
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Harden the SSH server (keys only, no root login)
+  ansible.builtin.template:
+    src: sshd_hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/99-greenpulse-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    # Refuse to install a config that would break sshd (and lock us out).
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Restart ssh

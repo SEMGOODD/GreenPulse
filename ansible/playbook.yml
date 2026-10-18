@@ -1,0 +1,13 @@
+---
+
+- name: Prepare every VM (updates, base packages, SSH hardening)
+  hosts: all
+  become: true
+  roles:
+    - common
+
+- name: Deploy PostgreSQL on the BDD VM
+  hosts: bdd
+  become: true
+  roles:
+    - postgres

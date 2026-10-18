@@ -1,0 +1,12 @@
+---
+# Base packages installed on every VM.
+common_packages:
+  - acl                 # needed by Ansible to switch to unprivileged users (become_user)
+  - ca-certificates
+  - curl
+  - unattended-upgrades # automatic security updates
+
+common_timezone: Europe/Paris
+
+# apt cache is considered fresh for this long (seconds): avoids re-downloading
+common_apt_cache_valid_time: 3600

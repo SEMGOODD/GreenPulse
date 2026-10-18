@@ -1,0 +1,15 @@
+# Example of the inventory that Terraform generates in step 4 (ansible/inventory.ini).
+# The real file is gitignored: the IPs change every time the VMs are recreated.
+
+[bdd]
+greenpulse-bdd ansible_host=203.0.113.20
+
+[app]
+greenpulse-app ansible_host=203.0.113.10
+
+[all:vars]
+ansible_user=ubuntu
+ansible_ssh_private_key_file=~/.ssh/id_ed25519
+# Private IPs, used for traffic INSIDE the VPC (app -> PostgreSQL).
+app_private_ip=10.0.1.10
+bdd_private_ip=10.0.1.20

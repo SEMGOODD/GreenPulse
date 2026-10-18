@@ -1,0 +1,8 @@
+---
+
+db_name: greenpulse
+db_user: ayoub
+db_port: 5432
+# The real value is encrypted in vault.yml (ansible-vault). Prefixing vault
+# variables with "vault_" shows at a glance where a secret comes from.
+db_password: "{{ vault_db_password }}"

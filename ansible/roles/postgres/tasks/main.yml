@@ -1,0 +1,96 @@
+---
+# Postgres role: installs PostgreSQL, creates the group, user and database,
+# restricts network access to the APP VM, then runs the SQL init script.
+
+- name: Install PostgreSQL packages
+  ansible.builtin.apt:
+    name: "{{ postgres_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure PostgreSQL is started and enabled at boot
+  ansible.builtin.systemd_service:
+    name: postgresql
+    state: started
+    enabled: true
+
+# Network access
+# A drop-in file in conf.d/ (included by the default postgresql.conf) is easier
+# to read and to maintain than editing postgresql.conf line by line.
+- name: Configure the listening addresses and port
+  ansible.builtin.template:
+    src: greenpulse.conf.j2
+    dest: "{{ postgres_config_dir }}/conf.d/greenpulse.conf"
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  notify: Restart postgresql
+
+# Ubuntu's default pg_hba.conf already allows localhost; we add one line per
+# allowed client, limited to our database and our user.
+- name: Allow the APP VM to connect to the database
+  community.postgresql.postgresql_pg_hba:
+    dest: "{{ postgres_config_dir }}/pg_hba.conf"
+    contype: host
+    databases: "{{ db_name }}"
+    users: "{{ db_user }}"
+    address: "{{ item }}"
+    method: scram-sha-256
+  loop: "{{ postgres_allowed_clients }}"
+  notify: Restart postgresql
+
+# Roles and database
+# These tasks connect through the local Unix socket as the "postgres" system
+# user, which is the PostgreSQL superuser.
+- name: Create the roles and the database
+  become: true
+  become_user: postgres
+  block:
+    - name: Create the group role
+      community.postgresql.postgresql_user:
+        name: "{{ postgres_db_group }}"
+        role_attr_flags: NOLOGIN
+
+    - name: Create the application user
+      community.postgresql.postgresql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+      no_log: true # never print the password in the Ansible output
+
+    - name: Add the application user to the group
+      community.postgresql.postgresql_membership:
+        target_roles: "{{ db_user }}"
+        memberships:
+          - groups: "{{ postgres_db_group }}"
+        state: present
+
+    - name: Create the database owned by the application user
+      community.postgresql.postgresql_db:
+        name: "{{ db_name }}"
+        owner: "{{ db_user }}"
+
+# Apply the network config now, so the database is reachable from the APP VM
+# before the next play deploys the application.
+- name: Apply pending PostgreSQL restarts
+  ansible.builtin.meta: flush_handlers
+
+# SQL script 
+- name: Copy the SQL init script
+  ansible.builtin.template:
+    src: init.sql.j2
+    dest: /var/lib/postgresql/greenpulse_init.sql
+    owner: postgres
+    group: postgres
+    mode: "0600"
+
+# Connecting as the application user (over TCP on localhost) makes it the
+# OWNER of the table, so the app can read it without extra GRANTs.
+- name: Run the SQL init script as the application user
+  community.postgresql.postgresql_script:
+    login_db: "{{ db_name }}"
+    path: /var/lib/postgresql/greenpulse_init.sql
+    login_host: 127.0.0.1
+    login_port: "{{ db_port }}"
+    login_user: "{{ db_user }}"
+    login_password: "{{ db_password }}"

@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS {{ db_user }} (
+    id   SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE
+);
+
+INSERT INTO {{ db_user }} (name)
+VALUES ('{{ postgres_seed_name | replace("'", "''") }}')
+ON CONFLICT (name) DO NOTHING;

@@ -1,0 +1,22 @@
+---
+# Ubuntu 24.04 ships PostgreSQL 16; the version is part of the config paths.
+postgres_version: 16
+postgres_config_dir: "/etc/postgresql/{{ postgres_version }}/main"
+
+postgres_packages:
+  - postgresql
+  - python3-psycopg2
+
+# Group role the application user is added to (PDF: cytech_grp).
+postgres_db_group: greenpulse_grp
+
+# PostgreSQL only listens on localhost and on the VM's private IP:
+# it is never reachable on the public IP, even if the security group changed.
+postgres_listen_addresses: "localhost,{{ bdd_private_ip }}"
+
+# Only these hosts (besides localhost) may connect: the APP VM, nothing else.
+postgres_allowed_clients:
+  - "{{ app_private_ip }}/32"
+
+# Name inserted by the SQL script and displayed by the app ("hello <name>").
+postgres_seed_name: Ayoub
