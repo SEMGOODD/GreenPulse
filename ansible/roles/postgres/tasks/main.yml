@@ -75,7 +75,7 @@
 - name: Apply pending PostgreSQL restarts
   ansible.builtin.meta: flush_handlers
 
-# SQL script 
+# SQL script
 - name: Copy the SQL init script
   ansible.builtin.template:
     src: init.sql.j2

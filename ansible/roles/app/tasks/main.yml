@@ -1,0 +1,113 @@
+---
+# App role: deploys the FastAPI application in a Python virtual environment,
+# runs it as a systemd service, then tests the API.
+
+- name: Install Python and venv support
+  ansible.builtin.apt:
+    name: "{{ app_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the application system group
+  ansible.builtin.group:
+    name: "{{ app_user }}"
+    system: true
+
+- name: Create the application system user (no login shell)
+  ansible.builtin.user:
+    name: "{{ app_user }}"
+    group: "{{ app_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ app_dir }}"
+    create_home: false
+
+# The code belongs to root and is only readable by the app user,
+# so a compromised app cannot modify its own code.
+- name: Create the application directory
+  ansible.builtin.file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: root
+    group: "{{ app_user }}"
+    mode: "0755"
+
+- name: Copy the application code and its requirements
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ app_dir }}/{{ item }}"
+    owner: root
+    group: "{{ app_user }}"
+    mode: "0644"
+  loop:
+    - main.py
+    - requirements.txt
+  notify: Restart app
+
+- name: Install the Python dependencies in a virtual environment
+  ansible.builtin.pip:
+    requirements: "{{ app_dir }}/requirements.txt"
+    virtualenv: "{{ app_venv_dir }}"
+    virtualenv_command: python3 -m venv
+  notify: Restart app
+
+- name: Create the configuration directory
+  ansible.builtin.file:
+    path: "{{ app_env_file | dirname }}"
+    state: directory
+    owner: root
+    group: "{{ app_user }}"
+    mode: "0750"
+
+# Contains the DB password: readable by root and the app group only,
+# and never shown in Ansible's output (no_log, diff: false).
+- name: Write the environment file (database settings)
+  ansible.builtin.template:
+    src: app.env.j2
+    dest: "{{ app_env_file }}"
+    owner: root
+    group: "{{ app_user }}"
+    mode: "0640"
+  no_log: true
+  diff: false
+  notify: Restart app
+
+- name: Install the systemd service
+  ansible.builtin.template:
+    src: app.service.j2
+    dest: "/etc/systemd/system/{{ app_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart app
+
+- name: Enable and start the service
+  ansible.builtin.systemd_service:
+    name: "{{ app_service_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+
+# Run the pending restart now, so the test below hits the new version.
+- name: Apply pending restarts
+  ansible.builtin.meta: flush_handlers
+
+# API test
+# The request is sent from the Ansible controller (your laptop) to the PUBLIC
+# IP, exactly like a browser would: it also proves the security group is open.
+- name: Request the API from the controller
+  ansible.builtin.uri:
+    url: "http://{{ ansible_host }}:{{ app_port }}/"
+    return_content: true
+  register: app_api_response
+  delegate_to: localhost
+  become: false
+  # Retry while the service is starting instead of a fixed pause.
+  until: app_api_response.status == 200
+  retries: "{{ app_healthcheck_retries }}"
+  delay: "{{ app_healthcheck_delay }}"
+
+- name: Show the API response
+  ansible.builtin.debug:
+    msg: "GET http://{{ ansible_host }}:{{ app_port }}/ -> {{ app_api_response.status }} '{{ app_api_response.content }}'"

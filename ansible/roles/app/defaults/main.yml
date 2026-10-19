@@ -1,0 +1,25 @@
+---
+app_service_name: greenpulse-app
+
+# Dedicated system user: the app never runs as root.
+app_user: greenpulse
+
+app_dir: /opt/greenpulse
+app_venv_dir: "{{ app_dir }}/venv"
+app_env_file: /etc/greenpulse/app.env
+
+app_host: 0.0.0.0
+app_port: 8080
+
+app_packages:
+  - python3
+  - python3-venv
+  - python3-pip
+
+# The app reaches PostgreSQL through the VPC, on the BDD VM's private IP.
+app_db_host: "{{ bdd_private_ip }}"
+app_db_table: "{{ db_user }}"
+
+# How long to wait for the API to answer after a (re)start.
+app_healthcheck_retries: 10
+app_healthcheck_delay: 3
