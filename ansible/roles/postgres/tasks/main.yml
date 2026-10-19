@@ -84,13 +84,24 @@
     group: postgres
     mode: "0600"
 
+- name: Copy the telemetry schema (readings and alerts tables)
+  ansible.builtin.copy:
+    src: "{{ postgres_schema_file }}"
+    dest: /var/lib/postgresql/greenpulse_schema.sql
+    owner: postgres
+    group: postgres
+    mode: "0600"
+
 # Connecting as the application user (over TCP on localhost) makes it the
-# OWNER of the table, so the app can read it without extra GRANTs.
-- name: Run the SQL init script as the application user
+# OWNER of the tables, so the services can use them without extra GRANTs.
+- name: Run the SQL scripts as the application user
   community.postgresql.postgresql_script:
     login_db: "{{ db_name }}"
-    path: /var/lib/postgresql/greenpulse_init.sql
+    path: "{{ item }}"
     login_host: 127.0.0.1
     login_port: "{{ db_port }}"
     login_user: "{{ db_user }}"
     login_password: "{{ db_password }}"
+  loop:
+    - /var/lib/postgresql/greenpulse_init.sql
+    - /var/lib/postgresql/greenpulse_schema.sql

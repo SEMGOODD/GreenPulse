@@ -6,3 +6,5 @@ collections:
     version: ">=10.0.0"
   - name: community.postgresql # postgresql_user, _db, _pg_hba, _script...
     version: ">=5.0.0"
+  - name: community.docker # docker_compose_v2
+    version: ">=4.0.0"

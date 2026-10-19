@@ -1,0 +1,99 @@
+# GreenPulse application stack, deployed on the APP VM by Ansible (roles/app).
+# PostgreSQL is NOT here: it runs on the BDD VM. Variables like ${DB_HOST} come
+# from the .env file next to this file (written by Ansible, see .env.example).
+name: greenpulse
+
+# Shared blocks (YAML anchors), reused by several services below.
+x-db-env: &db-env
+  DB_HOST: ${DB_HOST:?DB_HOST is required}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_NAME: ${DB_NAME:?DB_NAME is required}
+  DB_USER: ${DB_USER:?DB_USER is required}
+  DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+
+# Same thresholds for alert-worker (raises alerts) and query-api (draws them).
+x-thresholds: &thresholds
+  TEMPERATURE_MIN: ${TEMPERATURE_MIN:-5}
+  TEMPERATURE_MAX: ${TEMPERATURE_MAX:-35}
+  HUMIDITY_MIN: ${HUMIDITY_MIN:-30}
+  HUMIDITY_MAX: ${HUMIDITY_MAX:-90}
+  SOIL_MOISTURE_MIN: ${SOIL_MOISTURE_MIN:-20}
+  SOIL_MOISTURE_MAX: ${SOIL_MOISTURE_MAX:-}
+
+x-common: &common
+  restart: unless-stopped
+  # Rotate container logs so they cannot fill the 20 GB disk.
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  ingest-api:
+    <<: *common
+    build: ./ingest-api
+    image: greenpulse/ingest-api:local
+    environment:
+      <<: *db-env
+    # No "ports:": only reachable inside the Docker network (by the simulator).
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 160m
+
+  alert-worker:
+    <<: *common
+    build: ./alert-worker
+    image: greenpulse/alert-worker:local
+    environment:
+      <<: [*db-env, *thresholds]
+      POLL_SECONDS: ${POLL_SECONDS:-5}
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+    healthcheck:
+      # Healthy while the worker keeps touching its heartbeat file (< 60 s old).
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/heartbeat') > 60)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    mem_limit: 96m
+
+  query-api:
+    <<: *common
+    build: ./query-api
+    image: greenpulse/query-api:local
+    environment:
+      <<: [*db-env, *thresholds]
+      HELLO_TABLE: ${HELLO_TABLE:-${DB_USER}}
+      SENSOR_IDS: ${SENSOR_IDS:-greenhouse-north,greenhouse-south,nursery}
+      REFRESH_SECONDS: ${REFRESH_SECONDS:-5}
+    # The only service exposed to the outside: the dashboard on port 8080.
+    ports:
+      - "${APP_PORT:-8080}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 192m
+
+  sensor-simulator:
+    <<: *common
+    build: ./sensor-simulator
+    image: greenpulse/sensor-simulator:local
+    environment:
+      INGEST_URL: http://ingest-api:8000/readings
+      SENSOR_IDS: ${SENSOR_IDS:-greenhouse-north,greenhouse-south,nursery}
+      INTERVAL_SECONDS: ${INTERVAL_SECONDS:-5}
+      INCIDENT_PROBABILITY: ${INCIDENT_PROBABILITY:-0.004}
+    depends_on:
+      ingest-api:
+        condition: service_healthy
+    mem_limit: 64m

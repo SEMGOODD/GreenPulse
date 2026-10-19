@@ -1,0 +1,38 @@
+# Local development: adds a PostgreSQL container so the whole stack runs on
+# your laptop, without AWS.
+#   cd services && cp .env.example .env
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# Dashboard: http://localhost:8080
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      # Run on the first start only (empty volume), in alphabetical order.
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+      - ./db/dev-seed.sql:/docker-entrypoint-initdb.d/20-dev-seed.sql:ro
+      - dev-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  ingest-api:
+    depends_on:
+      db:
+        condition: service_healthy
+  alert-worker:
+    depends_on:
+      db:
+        condition: service_healthy
+  query-api:
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dev-db-data:

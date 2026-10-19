@@ -1,0 +1,14 @@
+---
+# Docker Engine from Docker's official apt repository (Ubuntu's docker.io
+# package is older and has no Compose v2 plugin).
+docker_apt_repository: https://download.docker.com/linux/ubuntu
+docker_apt_key_url: https://download.docker.com/linux/ubuntu/gpg
+# Debian-style architecture name, derived from the VM's CPU.
+docker_apt_arch: "{{ 'arm64' if ansible_facts['architecture'] == 'aarch64' else 'amd64' }}"
+
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin

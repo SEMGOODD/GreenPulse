@@ -32,8 +32,9 @@
   roles:
     - postgres
 
-- name: Deploy the FastAPI application on the APP VM
+- name: Deploy the GreenPulse microservices on the APP VM
   hosts: app
   become: true
   roles:
+    - docker
     - app

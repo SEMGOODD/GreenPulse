@@ -1,25 +1,41 @@
 ---
-app_service_name: greenpulse-app
-
-# Dedicated system user: the app never runs as root.
-app_user: greenpulse
-
 app_dir: /opt/greenpulse
-app_venv_dir: "{{ app_dir }}/venv"
-app_env_file: /etc/greenpulse/app.env
+# Where docker-compose.yml lives on the VM (the Compose project directory).
+app_compose_dir: "{{ app_dir }}/services"
 
-app_host: 0.0.0.0
+# Application code, taken from the repository (greenpulse/services/).
+app_services_src: "{{ playbook_dir }}/../services"
+# Only what production needs: no local .env, no dev compose file.
+app_services_files:
+  - docker-compose.yml
+  - ingest-api/
+  - alert-worker/
+  - query-api/
+  - sensor-simulator/
+
 app_port: 8080
 
-app_packages:
-  - python3
-  - python3-venv
-  - python3-pip
-
-# The app reaches PostgreSQL through the VPC, on the BDD VM's private IP.
+# The services reach PostgreSQL through the VPC, on the BDD VM's private IP.
 app_db_host: "{{ bdd_private_ip }}"
-app_db_table: "{{ db_user }}"
+# PDF: the "hello" table has the same name as the database user.
+app_hello_table: "{{ db_user }}"
 
-# How long to wait for the API to answer after a (re)start.
+app_sensor_ids:
+  - greenhouse-north
+  - greenhouse-south
+  - nursery
+
+# Normal ranges: outside of them, alert-worker raises an alert.
+# An empty value means "no limit".
+app_thresholds:
+  TEMPERATURE_MIN: 5
+  TEMPERATURE_MAX: 35
+  HUMIDITY_MIN: 30
+  HUMIDITY_MAX: 90
+  SOIL_MOISTURE_MIN: 20
+  SOIL_MOISTURE_MAX: ""
+
+# Building 4 images on a t3.micro can take a few minutes the first time.
+app_compose_wait_timeout: 600
 app_healthcheck_retries: 10
 app_healthcheck_delay: 3

@@ -20,3 +20,6 @@ postgres_allowed_clients:
 
 # Name inserted by the SQL script and displayed by the app ("hello <name>").
 postgres_seed_name: Ayoub
+
+# Telemetry schema, shared with the local dev stack (services/docker-compose.dev.yml).
+postgres_schema_file: "{{ playbook_dir }}/../services/db/schema.sql"

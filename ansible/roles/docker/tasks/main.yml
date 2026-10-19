@@ -1,0 +1,26 @@
+---
+# Docker role: installs Docker Engine and the Compose plugin.
+
+- name: Add the official Docker apt repository
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: deb
+    uris: "{{ docker_apt_repository }}"
+    suites: "{{ ansible_facts['distribution_release'] }}"
+    components: stable
+    architectures: "{{ docker_apt_arch }}"
+    # Packages are only accepted if signed by Docker's key.
+    signed_by: "{{ docker_apt_key_url }}"
+    install_python_debian: true
+
+- name: Install Docker Engine and the Compose plugin
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: present
+    update_cache: true
+
+- name: Ensure Docker is started and enabled at boot
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: true

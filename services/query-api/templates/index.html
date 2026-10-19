@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GreenPulse</title>
+  <meta name="description" content="Live greenhouse telemetry: temperature, humidity and soil moisture.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%231baf7a' d='M5 21c0-9 5-15 15-16-1 10-7 15-15 16Zm0 0 8-8'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script>
+    // Apply the saved theme before the first paint (no light/dark flash).
+    try {
+      const theme = localStorage.getItem("gp-theme");
+      if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+    } catch (e) { /* storage unavailable: follow the OS setting */ }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 21c0-9 5-15 15-16-1 10-7 15-15 16Z"/><path class="brand-vein" d="M5 21l8-8"/>
+      </svg>
+      <span class="brand-name">GreenPulse</span>
+      <span class="brand-tag">Greenhouse telemetry</span>
+    </div>
+    <div class="topbar-actions">
+      <span class="live" id="live-status" aria-live="polite">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="live-text">Connecting…</span>
+      </span>
+      <button class="btn btn-ghost" id="pause-btn" type="button" aria-pressed="false">Pause</button>
+      <button class="btn btn-ghost btn-icon" id="theme-btn" type="button" aria-label="Theme: system">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main" class="page">
+    <section class="hero" aria-labelledby="greeting">
+      <h1 id="greeting">{{ greeting }}</h1>
+      <p class="hero-sub" id="hero-sub">Here is how your greenhouses are doing right now.</p>
+    </section>
+
+    <div class="banner" id="error-banner" role="alert" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20L12 3Zm0 6v5m0 3v.01"/></svg>
+      <span><strong>Can't reach the API.</strong> Showing the last data received — retrying automatically.</span>
+    </div>
+
+    <section class="kpis" aria-label="Key figures">
+      <article class="tile">
+        <h2 class="tile-label">Sensors online</h2>
+        <p class="tile-value" id="kpi-online">—</p>
+        <p class="tile-note" id="kpi-online-note">&nbsp;</p>
+      </article>
+      <article class="tile">
+        <h2 class="tile-label">Active alerts</h2>
+        <p class="tile-value" id="kpi-alerts">—</p>
+        <p class="tile-note" id="kpi-alerts-note">&nbsp;</p>
+      </article>
+      <article class="tile">
+        <h2 class="tile-label">Average temperature</h2>
+        <p class="tile-value" id="kpi-temp">—</p>
+        <p class="tile-note">across online zones</p>
+      </article>
+      <article class="tile">
+        <h2 class="tile-label">Readings, last hour</h2>
+        <p class="tile-value" id="kpi-readings">—</p>
+        <p class="tile-note" id="kpi-readings-note">&nbsp;</p>
+      </article>
+    </section>
+
+    <section aria-labelledby="zones-title">
+      <div class="section-head">
+        <h2 id="zones-title">Zones</h2>
+      </div>
+      <div class="zones" id="zones" aria-busy="true">
+        <div class="zone zone-skeleton"></div>
+        <div class="zone zone-skeleton"></div>
+        <div class="zone zone-skeleton"></div>
+      </div>
+    </section>
+
+    <section aria-labelledby="trends-title">
+      <div class="section-head">
+        <h2 id="trends-title">Trends</h2>
+      </div>
+      <div class="filters">
+        <div class="segmented" role="group" aria-label="Metric" id="metric-filter"></div>
+        <div class="segmented" role="group" aria-label="Time range" id="range-filter">
+          <button type="button" data-minutes="15">15 min</button>
+          <button type="button" data-minutes="60">1 hour</button>
+          <button type="button" data-minutes="360">6 hours</button>
+          <button type="button" data-minutes="1440">24 hours</button>
+        </div>
+      </div>
+      <article class="card chart-card">
+        <header class="chart-head">
+          <div>
+            <h3 class="chart-title" id="chart-title">Temperature</h3>
+            <p class="chart-sub" id="chart-sub">&nbsp;</p>
+          </div>
+          <div class="chart-tools">
+            <div class="legend" id="legend" aria-label="Zones shown"></div>
+            <button class="btn btn-ghost" id="table-btn" type="button" aria-pressed="false">Table</button>
+          </div>
+        </header>
+        <div class="chart" id="chart">
+          <div class="tooltip" id="tooltip" role="status" hidden></div>
+        </div>
+        <div class="table-wrap" id="table-wrap" hidden></div>
+      </article>
+    </section>
+
+    <section aria-labelledby="alerts-title">
+      <div class="section-head">
+        <h2 id="alerts-title">Alerts</h2>
+        <div class="segmented segmented-sm" role="group" aria-label="Alerts shown" id="alert-filter">
+          <button type="button" data-view="active" aria-pressed="true">Active <span class="count" id="count-active">0</span></button>
+          <button type="button" data-view="history" aria-pressed="false">History</button>
+        </div>
+      </div>
+      <ul class="alerts card" id="alerts" aria-live="polite"></ul>
+    </section>
+  </main>
+
+  <footer class="footer">
+    GreenPulse · refreshes every <span id="refresh-every">5</span> s ·
+    <a href="/docs">API documentation</a>
+  </footer>
+
+  <script id="config" type="application/json">{{ config | tojson }}</script>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
