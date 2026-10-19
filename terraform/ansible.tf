@@ -2,12 +2,19 @@
 # ansible-playbook, so a single `terraform apply` builds AND configures everything.
 
 locals {
-  ansible_dir = "${path.module}/../ansible"
+  ansible_dir  = "${path.module}/../ansible"
+  services_dir = "${path.module}/../services"
 
   # Fingerprint of the Ansible code (the generated inventory excluded)
   ansible_code_hash = sha1(join("", [
     for file in sort(fileset(local.ansible_dir, "**")) :
     filesha1("${local.ansible_dir}/${file}") if file != "inventory.ini"
+  ]))
+
+  services_code_hash = sha1(join("", [
+    for file in sort(fileset(local.services_dir, "**")) :
+    filesha1("${local.services_dir}/${file}")
+    if !endswith(file, ".env") && !strcontains(file, "__pycache__")
   ]))
 }
 
@@ -32,10 +39,11 @@ resource "terraform_data" "ansible_playbook" {
   count = var.run_ansible ? 1 : 0
 
   triggers_replace = {
-    app_instance = module.app.instance_id
-    bdd_instance = module.bdd.instance_id
-    inventory    = local_file.ansible_inventory.content
-    ansible_code = local.ansible_code_hash
+    app_instance  = module.app.instance_id
+    bdd_instance  = module.bdd.instance_id
+    inventory     = local_file.ansible_inventory.content
+    ansible_code  = local.ansible_code_hash
+    services_code = local.services_code_hash
   }
 
   provisioner "local-exec" {
