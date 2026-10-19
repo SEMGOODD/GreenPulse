@@ -6,7 +6,14 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.5"
+    }
   }
+
+  # Remote state in S3 (bucket created by terraform/bootstrap).
+  backend "s3" {}
 }
 
 provider "aws" {

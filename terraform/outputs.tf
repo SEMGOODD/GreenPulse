@@ -43,3 +43,13 @@ output "app_url" {
   description = "URL of the application."
   value       = "http://${module.app.public_ip}:${var.app_port}"
 }
+
+output "ansible_inventory_path" {
+  description = "Inventory generated for Ansible."
+  value       = abspath(local_file.ansible_inventory.filename)
+}
+
+output "ansible_rerun_command" {
+  description = "Command to re-run the configuration by hand, without Terraform."
+  value       = "cd ${abspath(local.ansible_dir)} && ansible-playbook playbook.yml"
+}

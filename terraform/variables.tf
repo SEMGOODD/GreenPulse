@@ -128,3 +128,10 @@ variable "app_private_ip" {
   type        = string
   default     = "10.0.1.10"
 }
+
+# Ansible
+variable "run_ansible" {
+  description = "Run ansible-playbook automatically after the VMs are created. Set to false to only create the infrastructure."
+  type        = bool
+  default     = true
+}

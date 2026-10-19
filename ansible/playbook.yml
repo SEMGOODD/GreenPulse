@@ -1,5 +1,25 @@
 ---
 
+- name: Wait until the new VMs are reachable and fully booted
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Wait for SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    # cloud-init configures the VM at first boot and holds the apt lock meanwhile.
+    - name: Wait for cloud-init to finish
+      community.general.cloud_init_data_facts:
+        filter: status
+      register: cloud_init_result
+      until: >-
+        cloud_init_result.cloud_init_data_facts.status.v1.stage is defined
+        and not cloud_init_result.cloud_init_data_facts.status.v1.stage
+      retries: 60
+      delay: 5
+
 - name: Prepare every VM (updates, base packages, SSH hardening)
   hosts: all
   become: true
