@@ -39,7 +39,8 @@
 - name: Build and start the stack
   community.docker.docker_compose_v2:
     project_src: "{{ app_compose_dir }}"
-    build: always
+    build: "{{ 'always' if app_build_images else 'never' }}"
+    pull: "{{ 'never' if app_build_images else 'always' }}"
     state: present
     remove_orphans: true
     # Wait until every service with a healthcheck reports "healthy".
