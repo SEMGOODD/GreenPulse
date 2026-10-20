@@ -6,14 +6,20 @@ app_compose_dir: "{{ app_dir }}/services"
 # Application code, taken from the repository (greenpulse/services/).
 app_services_src: "{{ playbook_dir }}/../services"
 # Only what production needs: no local .env, no dev compose file.
-app_services_files:
-  - docker-compose.yml
+app_service_dirs:
   - ingest-api/
   - alert-worker/
   - query-api/
   - sensor-simulator/
 
+app_services_files: "{{ ['docker-compose.yml'] + (app_service_dirs if app_build_images else []) }}"
+
+
 app_port: 8080
+
+app_image_registry: ghcr.io/semgoodd
+app_image_tag: latest
+app_build_images: false
 
 # The services reach PostgreSQL through the VPC, on the BDD VM's private IP.
 app_db_host: "{{ bdd_private_ip }}"

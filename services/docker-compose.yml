@@ -33,7 +33,7 @@ services:
   ingest-api:
     <<: *common
     build: ./ingest-api
-    image: greenpulse/ingest-api:local
+    image: ${IMAGE_REGISTRY:-local}/greenpulse-ingest-api:${IMAGE_TAG:-dev}
     environment:
       <<: *db-env
     # No "ports:": only reachable inside the Docker network (by the simulator).
@@ -50,7 +50,7 @@ services:
   alert-worker:
     <<: *common
     build: ./alert-worker
-    image: greenpulse/alert-worker:local
+    image: ${IMAGE_REGISTRY:-local}/greenpulse-alert-worker:${IMAGE_TAG:-dev}
     environment:
       <<: [*db-env, *thresholds]
       POLL_SECONDS: ${POLL_SECONDS:-5}
@@ -67,7 +67,7 @@ services:
   query-api:
     <<: *common
     build: ./query-api
-    image: greenpulse/query-api:local
+    image: ${IMAGE_REGISTRY:-local}/greenpulse-query-api:${IMAGE_TAG:-dev}
     environment:
       <<: [*db-env, *thresholds]
       HELLO_TABLE: ${HELLO_TABLE:-${DB_USER}}
@@ -87,7 +87,7 @@ services:
   sensor-simulator:
     <<: *common
     build: ./sensor-simulator
-    image: greenpulse/sensor-simulator:local
+    image: ${IMAGE_REGISTRY:-local}/greenpulse-sensor-simulator:${IMAGE_TAG:-dev}
     environment:
       INGEST_URL: http://ingest-api:8000/readings
       SENSOR_IDS: ${SENSOR_IDS:-greenhouse-north,greenhouse-south,nursery}
