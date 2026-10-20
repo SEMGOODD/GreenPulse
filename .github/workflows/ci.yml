@@ -1,40 +1,40 @@
 name: CI
 
 on:
-  push: 
+  push:
     branches:
       - main
   pull_request:
     branches:
       - main
- 
+
 permissions:
   contents: read
 
 jobs:
   terraform:
     name: Terraform checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Check out the code
         uses: actions/checkout@v7
-      
+
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.16.2"
-      
+
       - name: Check formatting
         run: terraform fmt -check -recursive -diff
         working-directory: terraform
-      
+
       - name: Validate the main configuration
-        run: | 
+        run: |
           terraform init -backend=false -input=false
           terraform validate
         working-directory: terraform
-      
+
       - name: Validate the bootstrap configuration
         run: |
           terraform init -backend=false -input=false
@@ -43,7 +43,7 @@ jobs:
 
   ansible:
     name: ansible checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: ansible
@@ -52,28 +52,28 @@ jobs:
       - name: Checkout the code
         uses: actions/checkout@v7
 
-      - name: Install Python 
+      - name: Install Python
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Install ansible lint
         run: pip install ansible-lint
-      
+
       - name: Install collections from requirement file
         run: |
           ansible-galaxy collection install -r requirements.yml
-      
+
       - name: Create a dummy vault password file
         run: echo "dummy-password-for-lint" > ~/.greenpulse_vault_pass
-      
+
       - name: Run ansible-lint
         run: |
           ansible-lint
 
   services:
     name: build the 4 Docker images
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: services
@@ -84,3 +84,52 @@ jobs:
 
       - name: Build the 4 docker images
         run: docker compose --env-file .env.example build
+
+  publish:
+    name: Publish ${{ matrix.service }} image
+    needs: [terraform, ansible, services]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      # One failing service must not cancel the other three.
+      fail-fast: false
+      matrix:
+        service: [ingest-api, alert-worker, query-api, sensor-simulator]
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx (needed for the cache)
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to the GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute the image name and tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/greenpulse-${{ matrix.service }}
+          tags: |
+            type=sha
+            type=raw,value=latest
+
+      - name: Build and push the image
+        uses: docker/build-push-action@v7
+        with:
+          context: services/${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
