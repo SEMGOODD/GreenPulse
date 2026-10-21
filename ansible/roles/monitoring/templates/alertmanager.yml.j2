@@ -1,23 +1,43 @@
 # {{ ansible_managed }}
-# ============================================================================
-# YOUR EXERCISE: WHERE do the alerts go?
-# For now every alert goes to the "null" receiver (nowhere): you can see them
-# in the Alertmanager UI (port 9093) but nobody is notified.
+# WHERE the alerts go. Prometheus decides WHEN an alert fires (rules/),
+# Alertmanager decides WHO is told, groups related alerts and avoids spam.
 #
-# TODO - send them to a Discord channel:
-#   1. Discord: channel settings > Integrations > Webhooks > New webhook > copy URL
-#   2. Store the URL in the vault (it is a secret: anyone with it can post):
-#        ansible-vault edit group_vars/all/vault.yml   ->  vault_discord_webhook_url: "https://..."
-#   3. Add a receiver with "discord_configs" and route the alerts to it.
-#      Docs: https://prometheus.io/docs/alerting/latest/configuration/#discord_config
-# ============================================================================
+# Discord is enabled as soon as vault_discord_webhook_url exists in the vault:
+#   ansible-vault edit group_vars/all/vault.yml
+#   vault_discord_webhook_url: "https://discord.com/api/webhooks/..."
+# Without it, alerts are only visible in the Alertmanager UI (port 9093).
 
 route:
-  receiver: "null"
-  group_by: [alertname, job]
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 4h
+  receiver: {{ 'discord' if vault_discord_webhook_url is defined else '"null"' }}
+  # Alerts with the same name are sent in ONE message (e.g. 3 targets down).
+  group_by: [alertname]
+  group_wait: 30s       # wait a bit to group alerts that fire together
+  group_interval: 5m    # then send new alerts of the group at most every 5 min
+  repeat_interval: 4h   # remind every 4 h while it is still firing
+  routes:
+    # Greenhouse anomalies come and go often: remind less frequently.
+    - matchers: ['severity="info"']
+      receiver: {{ 'discord' if vault_discord_webhook_url is defined else '"null"' }}
+      repeat_interval: 12h
 
 receivers:
   - name: "null"
+{% if vault_discord_webhook_url is defined %}
+  - name: discord
+    discord_configs:
+      - webhook_url: "{{ vault_discord_webhook_url }}"
+        send_resolved: true
+{% raw %}
+        # Go templates (Alertmanager), protected from Jinja by "raw".
+        title: '{{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} {{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})'
+        message: |-
+          {{ range .Alerts }}{{ if eq .Status "firing" }}• {{ .Annotations.summary }}{{ else }}• resolved: {{ .Annotations.summary }}{{ end }}
+          {{ end }}
+{% endraw %}
+{% endif %}
+
+# While a VM is down, do not also send the alerts of the services on it.
+inhibit_rules:
+  - source_matchers: ['alertname="InstanceDown"', 'job="node"']
+    target_matchers: ['severity=~"warning|info"']
+    equal: [vm]
