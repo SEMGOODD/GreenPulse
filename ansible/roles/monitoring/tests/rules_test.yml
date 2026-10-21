@@ -1,0 +1,86 @@
+# Unit tests for the alert rules: fake time series in, expected alerts out.
+# Run from ansible/roles/monitoring:
+#   docker run --rm -v "$PWD:/w" -w /w/tests --entrypoint promtool \
+#     prom/prometheus:v3.15.0 test rules rules_test.yml
+#
+# Series notation: 'a+bxN' = start at a, add b at each step, N steps.
+# One step = "interval" (15 s here).
+
+rule_files:
+  - ../files/rules/greenpulse.yml
+
+evaluation_interval: 15s
+
+tests:
+  # A target answers twice, then stops answering.
+  - interval: 15s
+    input_series:
+      - series: 'up{job="ingest-api", instance="10.0.1.10:9102", vm="app"}'
+        values: "1 1 0x20"
+    alert_rule_test:
+      - eval_time: 45s     # down for 15 s only: pending, not sent yet
+        alertname: InstanceDown
+        exp_alerts: []
+      - eval_time: 2m      # down for more than 1 min: firing
+        alertname: InstanceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: ingest-api
+              instance: 10.0.1.10:9102
+              vm: app
+            exp_annotations:
+              summary: "ingest-api is down on the app VM"
+              description: "Prometheus cannot scrape 10.0.1.10:9102 for more than 1 minute."
+
+  # A sensor sent its last reading at t=0, then went silent.
+  - interval: 15s
+    input_series:
+      - series: 'greenpulse_sensor_last_reading_timestamp_seconds{sensor_id="nursery"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 2m      # silent for 120 s: not above the threshold yet
+        alertname: SensorSilent
+        exp_alerts: []
+      - eval_time: 4m      # above 120 s since 2m15s, for more than 1 min: firing
+        alertname: SensorSilent
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              sensor_id: nursery
+            exp_annotations:
+              summary: "No reading from nursery for 4m 0s"
+              description: "The sensor normally reports every 5 seconds."
+
+  # 10 % of the requests fail (5xx) for several minutes.
+  - interval: 15s
+    input_series:
+      - series: 'http_requests_total{job="query-api", status="2xx"}'
+        values: "0+90x40"
+      - series: 'http_requests_total{job="query-api", status="5xx"}'
+        values: "0+10x40"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: query-api
+            exp_annotations:
+              summary: "query-api: 10% of requests fail"
+              description: "More than 5 % of HTTP answers are server errors (5xx)."
+
+  # Healthy platform: no false alarm.
+  - interval: 15s
+    input_series:
+      - series: 'up{job="node", instance="10.0.1.20:9100", vm="bdd"}'
+        values: "1x40"
+      - series: 'greenpulse_worker_backlog_readings'
+        values: "0x40"
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: InstanceDown
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: WorkerBacklogGrowing
+        exp_alerts: []

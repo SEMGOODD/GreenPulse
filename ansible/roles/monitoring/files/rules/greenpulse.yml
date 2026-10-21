@@ -1,24 +1,117 @@
-# ============================================================================
-# YOUR EXERCISE: alert rules. Prometheus evaluates them every
-# evaluation_interval; when the expression is true for "for:", the alert fires
-# and is sent to Alertmanager.
+# GreenPulse alert rules, evaluated by Prometheus every evaluation_interval.
+# An alert is "pending" while its expression is true, and "firing" (sent to
+# Alertmanager) once it has stayed true for the "for:" duration: a single bad
+# scrape never wakes anybody up.
 #
-# Ideas (from the most important to the least):
-#   - InstanceDown          a target stopped answering             up == 0
-#   - NoReadings            no reading ingested for 2 min          rate(...) == 0
-#   - HighErrorRate         more than 5 % of HTTP answers are 5xx
-#   - WorkerLagging         alert-worker backlog keeps growing
-#   - DiskAlmostFull        less than 15 % free disk
-#
-# Model of one rule:
-#   - alert: InstanceDown
-#     expr: up == 0
-#     for: 1m
-#     labels:
-#       severity: critical
-#     annotations:
-#       summary: "{{ $labels.job }} on {{ $labels.instance }} is down"
-# ============================================================================
+# severity: critical = the platform is broken, warning = it will break soon,
+#           info     = a greenhouse needs attention (business alert).
+
 groups:
-  - name: greenpulse
-    rules: []
+  # --- Is everything running? ------------------------------------------------
+  - name: availability
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is down on the {{ $labels.vm }} VM"
+          description: "Prometheus cannot scrape {{ $labels.instance }} for more than 1 minute."
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is unreachable"
+          description: "postgres_exporter runs, but cannot connect to the database."
+
+  # --- Is the platform doing its job? ------------------------------------------
+  - name: pipeline
+    rules:
+      - alert: SensorSilent
+        expr: time() - greenpulse_sensor_last_reading_timestamp_seconds > 120
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No reading from {{ $labels.sensor_id }} for {{ $value | humanizeDuration }}"
+          description: "The sensor normally reports every 5 seconds."
+
+      # The worker updates this timestamp after every batch (every 5 s). With a
+      # 15 s scrape interval the measured age can reach ~20 s: 2 min avoids false alarms.
+      - alert: WorkerStalled
+        expr: time() - greenpulse_worker_last_batch_timestamp_seconds > 120
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "alert-worker has not processed a batch for {{ $value | humanizeDuration }}"
+          description: "Greenhouse anomalies are no longer detected."
+
+      - alert: WorkerBacklogGrowing
+        expr: greenpulse_worker_backlog_readings > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} readings are waiting to be evaluated"
+          description: "alert-worker is slower than the incoming readings."
+
+      # A business alert: a greenhouse value is out of its normal range.
+      - alert: GreenhouseAnomaly
+        expr: greenpulse_alerts_active > 0
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $value }} active {{ $labels.metric }} alert(s) in the greenhouses"
+          description: "Details on the GreenPulse dashboard (Alerts section)."
+
+  # --- Are users well served? ---------------------------------------------------
+  - name: api
+    rules:
+      # 5xx = server errors (4xx are client mistakes, e.g. invalid readings).
+      - alert: HighErrorRate
+        expr: |
+          sum by (job) (rate(http_requests_total{status="5xx"}[5m]))
+            / sum by (job) (rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }}: {{ $value | humanizePercentage }} of requests fail"
+          description: "More than 5 % of HTTP answers are server errors (5xx)."
+
+      - alert: ApiSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, job) (rate(http_request_duration_seconds_bucket[5m]))) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }}: 95 % of requests take up to {{ $value | humanizeDuration }}"
+          description: "The p95 latency is above 1 second."
+
+  # --- Will a machine run out of resources? -------------------------------------
+  - name: resources
+    rules:
+      - alert: DiskAlmostFull
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk of the {{ $labels.vm }} VM: only {{ $value | humanizePercentage }} free"
+          description: "Prometheus data and Docker images can fill the 20 GB disk."
+
+      - alert: MemoryHigh
+        expr: 1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes > 0.90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RAM of the {{ $labels.vm }} VM is {{ $value | humanizePercentage }} used"
+          description: "The kernel may start killing containers (out of memory)."
