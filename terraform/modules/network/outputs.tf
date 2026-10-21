@@ -17,3 +17,8 @@ output "bdd_security_group_id" {
   description = "Security group to attach to the BDD VM."
   value       = aws_security_group.bdd.id
 }
+
+output "monitoring_security_group_id" {
+  description = "Security group to attach to the MONITORING VM (null when monitoring is disabled)."
+  value       = var.enable_monitoring ? aws_security_group.monitoring[0].id : null
+}

@@ -1,8 +1,4 @@
-# Local development: adds a PostgreSQL container so the whole stack runs on
-# your laptop, without AWS.
-#   cd services && cp .env.example .env
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-# Dashboard: http://localhost:8080
+
 services:
   db:
     image: postgres:16

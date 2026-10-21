@@ -32,3 +32,23 @@ variable "db_port" {
   description = "PostgreSQL port, reachable only from the app security group."
   type        = number
 }
+
+variable "enable_monitoring" {
+  description = "Create the monitoring security group and the scrape rules."
+  type        = bool
+}
+
+variable "monitoring_ui_ports" {
+  description = "Monitoring web UIs reachable from allowed_ssh_cidr (name => port)."
+  type        = map(number)
+}
+
+variable "app_metrics_ports" {
+  description = "Ports Prometheus scrapes on the APP VM (name => port)."
+  type        = map(number)
+}
+
+variable "bdd_metrics_ports" {
+  description = "Ports Prometheus scrapes on the BDD VM (name => port)."
+  type        = map(number)
+}

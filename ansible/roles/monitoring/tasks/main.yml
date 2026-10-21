@@ -1,0 +1,128 @@
+---
+# Monitoring role: Prometheus, Alertmanager and Grafana with Docker Compose.
+# The files YOU write (prometheus.yml.j2, rules/, alertmanager.yml.j2 and the
+# Grafana dashboards) are validated before being installed.
+
+- name: Create the monitoring directories
+  ansible.builtin.file:
+    path: "{{ monitoring_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - ""
+    - prometheus
+    - prometheus/rules
+    - alertmanager
+    - grafana
+    - grafana/provisioning
+    - grafana/dashboards
+
+- name: Write the Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ monitoring_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Write the Compose environment file (Grafana admin password)
+  ansible.builtin.template:
+    src: monitoring.env.j2
+    dest: "{{ monitoring_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
+# validate: Ansible writes the file to a temporary path and runs promtool on it
+# (inside the Prometheus image). If the check fails, the file is NOT installed.
+- name: Install the Prometheus configuration
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ monitoring_dir }}/prometheus/prometheus.yml"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: >-
+      docker run --rm --user 0:0 -v %s:/check/prometheus.yml:ro
+      --entrypoint promtool {{ monitoring_prometheus_image }} check config /check/prometheus.yml
+  notify: Restart prometheus
+
+- name: Install the alert rules
+  ansible.builtin.copy:
+    src: rules/
+    dest: "{{ monitoring_dir }}/prometheus/rules/"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart prometheus
+
+- name: Install the Alertmanager configuration
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: "{{ monitoring_dir }}/alertmanager/alertmanager.yml"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: >-
+      docker run --rm --user 0:0 -v %s:/check/alertmanager.yml:ro
+      --entrypoint amtool {{ monitoring_alertmanager_image }} check-config /check/alertmanager.yml
+  notify: Restart alertmanager
+
+- name: Install the Grafana provisioning and dashboards
+  ansible.builtin.copy:
+    src: grafana/
+    dest: "{{ monitoring_dir }}/grafana/"
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"
+  notify: Restart grafana
+
+- name: Start the monitoring stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_dir }}"
+    state: present
+    pull: missing
+    remove_orphans: true
+    wait: true
+    wait_timeout: 300
+
+- name: Apply pending restarts
+  ansible.builtin.meta: flush_handlers
+
+# --- Checks from the controller (your laptop, allowed by the security group) ---
+- name: Wait until Prometheus is ready
+  ansible.builtin.uri:
+    url: "http://{{ ansible_host }}:{{ monitoring_prometheus_port }}/-/ready"
+  register: monitoring_prometheus_ready
+  delegate_to: localhost
+  become: false
+  until: monitoring_prometheus_ready.status == 200
+  retries: 20
+  delay: 3
+
+- name: Read the scrape targets
+  ansible.builtin.uri:
+    url: "http://{{ ansible_host }}:{{ monitoring_prometheus_port }}/api/v1/targets?state=active"
+    return_content: true
+  register: monitoring_targets
+  delegate_to: localhost
+  become: false
+
+- name: Show the health of every scrape target
+  ansible.builtin.debug:
+    msg: "{{ item.labels.job }} {{ item.labels.instance }}: {{ item.health }} {{ item.lastError }}"
+  loop: "{{ monitoring_targets.json.data.activeTargets }}"
+  loop_control:
+    label: "{{ item.labels.job }}"
+
+- name: Show the URLs
+  ansible.builtin.debug:
+    msg:
+      - "Grafana:      http://{{ ansible_host }}:{{ monitoring_grafana_port }} (user admin)"
+      - "Prometheus:   http://{{ ansible_host }}:{{ monitoring_prometheus_port }}"
+      - "Alertmanager: http://{{ ansible_host }}:{{ monitoring_alertmanager_port }}"

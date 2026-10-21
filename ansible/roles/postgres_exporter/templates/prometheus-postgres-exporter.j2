@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+# Read by prometheus-postgres-exporter.service (EnvironmentFile).
+# Unix socket + peer authentication: no host, no password.
+DATA_SOURCE_NAME="host=/var/run/postgresql user={{ postgres_exporter_db_role }} dbname=postgres sslmode=disable"
+ARGS="--web.listen-address={{ postgres_exporter_listen_address }}"

@@ -1,0 +1,41 @@
+---
+# postgres_exporter: PostgreSQL metrics (connections, transactions, DB size...).
+
+- name: Install postgres_exporter (Ubuntu package)
+  ansible.builtin.apt:
+    name: prometheus-postgres-exporter
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# pg_monitor is PostgreSQL's built-in read-only monitoring role: the exporter
+# can read statistics, but not the application data.
+- name: Create the monitoring role in PostgreSQL
+  become: true
+  become_user: postgres
+  block:
+    - name: Create the login role used by the exporter
+      community.postgresql.postgresql_user:
+        name: "{{ postgres_exporter_db_role }}"
+
+    - name: Grant it the pg_monitor role
+      community.postgresql.postgresql_membership:
+        target_roles: "{{ postgres_exporter_db_role }}"
+        memberships:
+          - groups: pg_monitor
+        state: present
+
+- name: Configure the connection and listen address
+  ansible.builtin.template:
+    src: prometheus-postgres-exporter.j2
+    dest: /etc/default/prometheus-postgres-exporter
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart postgres_exporter
+
+- name: Ensure postgres_exporter is started and enabled at boot
+  ansible.builtin.systemd_service:
+    name: prometheus-postgres-exporter
+    state: started
+    enabled: true

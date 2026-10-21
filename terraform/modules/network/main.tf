@@ -136,3 +136,76 @@ resource "aws_vpc_security_group_egress_rule" "bdd_all" {
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
 }
+
+
+# Security group: MONITORING VM (only when enable_monitoring = true)
+
+# count = 0 or 1 turns the resource off or on; for_each over an empty map
+# creates no rule at all.
+resource "aws_security_group" "monitoring" {
+  count = var.enable_monitoring ? 1 : 0
+
+  name        = "${var.project_name}-monitoring-sg"
+  description = "MONITORING VM: SSH and web UIs from admin IP only"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.project_name}-monitoring-sg"
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "monitoring_ssh" {
+  count = var.enable_monitoring ? 1 : 0
+
+  security_group_id = aws_security_group.monitoring[0].id
+  description       = "SSH from admin IP only"
+  cidr_ipv4         = var.allowed_ssh_cidr
+  ip_protocol       = "tcp"
+  from_port         = 22
+  to_port           = 22
+}
+
+# Grafana, Prometheus and Alertmanager UIs: your browser only, never public.
+resource "aws_vpc_security_group_ingress_rule" "monitoring_ui" {
+  for_each = var.enable_monitoring ? var.monitoring_ui_ports : {}
+
+  security_group_id = aws_security_group.monitoring[0].id
+  description       = "${each.key} UI from admin IP only"
+  cidr_ipv4         = var.allowed_ssh_cidr
+  ip_protocol       = "tcp"
+  from_port         = each.value
+  to_port           = each.value
+}
+
+resource "aws_vpc_security_group_egress_rule" "monitoring_all" {
+  count = var.enable_monitoring ? 1 : 0
+
+  security_group_id = aws_security_group.monitoring[0].id
+  description       = "All outbound traffic (scrapes, apt, docker pulls, Discord webhook)"
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
+# Metrics ports open to the monitoring security group ONLY: nobody else,
+# not even your IP, can read them.
+resource "aws_vpc_security_group_ingress_rule" "app_metrics_from_monitoring" {
+  for_each = var.enable_monitoring ? var.app_metrics_ports : {}
+
+  security_group_id            = aws_security_group.app.id
+  description                  = "${each.key} metrics, scraped by Prometheus"
+  referenced_security_group_id = aws_security_group.monitoring[0].id
+  ip_protocol                  = "tcp"
+  from_port                    = each.value
+  to_port                      = each.value
+}
+
+resource "aws_vpc_security_group_ingress_rule" "bdd_metrics_from_monitoring" {
+  for_each = var.enable_monitoring ? var.bdd_metrics_ports : {}
+
+  security_group_id            = aws_security_group.bdd.id
+  description                  = "${each.key} metrics, scraped by Prometheus"
+  referenced_security_group_id = aws_security_group.monitoring[0].id
+  ip_protocol                  = "tcp"
+  from_port                    = each.value
+  to_port                      = each.value
+}
