@@ -6,6 +6,9 @@ Virtual sensors send temperature, humidity and soil-moisture readings. The platf
 
 [![CI](https://github.com/SEMGOODD/GreenPulse/actions/workflows/ci.yml/badge.svg)](https://github.com/SEMGOODD/GreenPulse/actions/workflows/ci.yml)
 
+![GreenPulse dashboard: live status of the 3 zones, key figures and the temperature trend with its limits](images/app.png)
+*The dashboard served by query-api on port 8080, deployed on AWS.*
+
 | Area | Tools |
 |---|---|
 | Infrastructure as code | Terraform (modules, S3 remote state with locking) |
@@ -93,6 +96,7 @@ greenpulse/
 │   ├── db/schema.sql         # telemetry tables, shared by Ansible and the dev stack
 │   ├── docker-compose.yml    # production stack
 │   └── docker-compose.dev.yml  # + a local PostgreSQL, for development
+├── images/                   # screenshots used in this README
 └── .github/workflows/ci.yml
 ```
 
@@ -215,6 +219,12 @@ Enabled with `enable_monitoring = true`: a third VM runs Prometheus, Alertmanage
 | ingest-api | 9102 | HTTP requests and latency, readings per sensor, last reading per sensor |
 | query-api | 9103 | HTTP requests and latency |
 
+![Prometheus: the up query returns the 8 scrape targets, all at 1](images/prometheus.png)
+*Prometheus on the monitoring VM: `up` returns 1 for each of the 8 targets.*
+
+![Grafana panel editor querying Prometheus: up of ingest-api and the ALERTS series](images/grafana.png)
+*Grafana, with Prometheus as its provisioned datasource: the queries used to watch an outage test (`up{job="ingest-api"}` and `ALERTS{alertname="InstanceDown"}`).*
+
 **Alert rules** ([`rules/greenpulse.yml`](ansible/roles/monitoring/files/rules/greenpulse.yml)):
 
 | Alert | Fires when | Severity |
@@ -238,6 +248,9 @@ docker run --rm -v "$PWD:/w" -w /w/tests --entrypoint promtool prom/prometheus:v
 ```
 
 Alertmanager groups related alerts in one message, sends a "resolved" message when it is fixed, and mutes the warnings of a VM that is entirely down.
+
+![Discord channel receiving GreenhouseAnomaly alerts, firing and resolved](images/discord_alert.png)
+*Business alerts on Discord: greenhouse anomalies detected by alert-worker, grouped in one message, with their resolution.*
 
 ---
 
