@@ -11,3 +11,4 @@ allowed_ssh_cidr = "203.0.113.7/32" # your public IP: curl -s https://checkip.am
 # ssh_private_key_path = "~/.ssh/id_ed25519"
 # app_instance_type    = "t3.micro"
 # bdd_instance_type    = "t3.small"
+# enable_monitoring    = true   # adds the monitoring VM (Prometheus, Grafana, Alertmanager)

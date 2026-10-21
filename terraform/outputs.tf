@@ -51,7 +51,7 @@ output "ansible_inventory_path" {
 
 output "ansible_rerun_command" {
   description = "Command to re-run the configuration by hand, without Terraform."
-  value       = "cd ${abspath(local.ansible_dir)} && ansible-playbook playbook.yml -e app_image_tag=sha-7f515a6"
+  value       = "cd ${abspath(local.ansible_dir)} && ansible-playbook playbook.yml"
 }
 
 # Monitoring outputs are null when enable_monitoring = false.
