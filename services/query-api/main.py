@@ -6,6 +6,7 @@ GET /api/overview     latest reading per sensor, KPIs, thresholds
 GET /api/readings     time series of one metric, averaged per time bucket
 GET /api/alerts       active alerts first, then the most recent resolved ones
 GET /health           liveness and database check (Docker healthcheck)
+Prometheus metrics: separate port METRICS_PORT (default 9103), not public.
 """
 
 import logging
@@ -19,6 +20,8 @@ from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from prometheus_client import start_http_server
+from prometheus_fastapi_instrumentator import Instrumentator
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
@@ -43,6 +46,7 @@ HELLO_TABLE = os.environ.get("HELLO_TABLE", os.environ["DB_USER"])
 SENSOR_IDS = [s.strip() for s in os.environ.get("SENSOR_IDS", "").split(",") if s.strip()]
 OFFLINE_AFTER_SECONDS = int(os.environ.get("OFFLINE_AFTER_SECONDS", "30"))
 REFRESH_SECONDS = int(os.environ.get("REFRESH_SECONDS", "5"))
+METRICS_PORT = int(os.environ.get("METRICS_PORT", "9103"))
 
 
 def optional_float(name: str, default: str) -> float | None:
@@ -72,11 +76,14 @@ pool = ConnectionPool(DB_CONNINFO, min_size=1, max_size=6, open=False,
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     pool.open()
+    start_http_server(METRICS_PORT)
     yield
     pool.close()
 
 
 app = FastAPI(title="GreenPulse query-api", lifespan=lifespan)
+# Request count, latency and status per endpoint (healthchecks and static files excluded).
+Instrumentator(excluded_handlers=["/health", "/static.*"]).instrument(app)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 

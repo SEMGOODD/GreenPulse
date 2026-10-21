@@ -1,0 +1,7 @@
+---
+postgres_exporter_port: 9187
+postgres_exporter_listen_address: "{{ ansible_facts['default_ipv4']['address'] }}:{{ postgres_exporter_port }}"
+# The exporter runs as the "prometheus" system user. Through the local socket,
+# PostgreSQL "peer" authentication maps it to the role with the same name:
+# no password to store anywhere.
+postgres_exporter_db_role: prometheus

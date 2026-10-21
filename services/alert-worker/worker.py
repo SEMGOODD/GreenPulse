@@ -6,6 +6,7 @@ Every POLL_SECONDS:
      one already open for that sensor and metric,
   3. for each metric back in range -> resolve the open alert,
   4. once an hour, delete readings older than RETENTION_DAYS.
+Prometheus metrics are served on METRICS_PORT (default 9101).
 """
 
 import logging
@@ -16,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import psycopg
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 
@@ -34,6 +36,24 @@ POLL_SECONDS = float(os.environ.get("POLL_SECONDS", "5"))
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "500"))
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "7"))
 PURGE_EVERY_SECONDS = 3600
+METRICS_PORT = int(os.environ.get("METRICS_PORT", "9101"))
+
+# Prometheus metrics: is the platform doing its job?
+READINGS_PROCESSED = Counter(
+    "greenpulse_worker_readings_processed_total", "Readings evaluated against the thresholds.")
+ALERTS_OPENED = Counter(
+    "greenpulse_alerts_opened_total", "Alerts opened.", ["metric", "kind"])
+ALERTS_RESOLVED = Counter(
+    "greenpulse_alerts_resolved_total", "Alerts resolved.", ["metric"])
+ALERTS_ACTIVE = Gauge(
+    "greenpulse_alerts_active", "Alerts currently open.", ["metric"])
+BACKLOG = Gauge(
+    "greenpulse_worker_backlog_readings", "Readings waiting to be evaluated.")
+LAST_BATCH = Gauge(
+    "greenpulse_worker_last_batch_timestamp_seconds", "Unix time of the last completed batch.")
+BATCH_DURATION = Histogram(
+    "greenpulse_worker_batch_duration_seconds", "Time spent evaluating one batch.")
+
 # Touched after every batch; the Docker healthcheck checks that it stays recent.
 HEARTBEAT_FILE = Path("/tmp/heartbeat")
 
@@ -103,6 +123,7 @@ RESOLVE_ALERT = """
 """
 
 
+@BATCH_DURATION.time()
 def process_batch(conn: psycopg.Connection) -> int:
     """Evaluate one batch of readings. Returns how many readings were processed."""
     with conn.transaction():
@@ -121,11 +142,30 @@ def process_batch(conn: psycopg.Connection) -> int:
                 if breach:
                     params["kind"], params["threshold"] = breach
                     if conn.execute(UPSERT_ALERT, params).fetchone()["created"]:
+                        ALERTS_OPENED.labels(rule.metric, params["kind"]).inc()
                         log.warning("ALERT %(sensor_id)s %(metric)s %(kind)s: %(value).1f "
                                     "(threshold %(threshold)s)", params)
                 elif conn.execute(RESOLVE_ALERT, params).fetchone():
+                    ALERTS_RESOLVED.labels(rule.metric).inc()
                     log.info("RESOLVED %(sensor_id)s %(metric)s: %(value).1f", params)
+    READINGS_PROCESSED.inc(len(readings))
     return len(readings)
+
+
+def update_state_metrics(conn: psycopg.Connection) -> None:
+    """Gauges read from the database: they stay right even after a restart."""
+    active = dict.fromkeys((rule.metric for rule in RULES), 0)
+    # Even a SELECT runs inside an explicit transaction: outside of one, psycopg
+    # would leave a transaction open and the next batch would never be committed.
+    with conn.transaction():
+        for row in conn.execute(
+                "SELECT metric, count(*) AS n FROM alerts WHERE resolved_at IS NULL GROUP BY metric"):
+            active[row["metric"]] = row["n"]
+        backlog = conn.execute("SELECT count(*) AS n FROM readings WHERE NOT checked").fetchone()["n"]
+    for metric, count in active.items():
+        ALERTS_ACTIVE.labels(metric).set(count)
+    BACKLOG.set(backlog)
+    LAST_BATCH.set_to_current_time()
 
 
 def purge_old_readings(conn: psycopg.Connection) -> None:
@@ -150,6 +190,7 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
 
     log.info("starting, rules: %s", RULES)
+    start_http_server(METRICS_PORT)
     last_purge = 0.0
     while running:
         try:
@@ -160,6 +201,7 @@ def main() -> None:
                         purge_old_readings(conn)
                         last_purge = time.monotonic()
                     processed = process_batch(conn)
+                    update_state_metrics(conn)
                     HEARTBEAT_FILE.touch()
                     # A full batch means there is a backlog: loop again at once.
                     if processed < BATCH_SIZE:

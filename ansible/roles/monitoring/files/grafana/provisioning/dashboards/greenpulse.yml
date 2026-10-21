@@ -1,0 +1,11 @@
+# Every JSON file in files/grafana/dashboards/ becomes a dashboard in the
+# "GreenPulse" folder. allowUiUpdates lets you edit them in the UI, then export
+# the JSON back into the repository.
+apiVersion: 1
+providers:
+  - name: greenpulse
+    folder: GreenPulse
+    type: file
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

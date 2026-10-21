@@ -51,5 +51,16 @@ output "ansible_inventory_path" {
 
 output "ansible_rerun_command" {
   description = "Command to re-run the configuration by hand, without Terraform."
-  value       = "cd ${abspath(local.ansible_dir)} && ansible-playbook playbook.yml"
+  value       = "cd ${abspath(local.ansible_dir)} && ansible-playbook playbook.yml -e app_image_tag=sha-7f515a6"
+}
+
+# Monitoring outputs are null when enable_monitoring = false.
+output "grafana_url" {
+  description = "Grafana (login admin, password: ansible-vault view group_vars/all/vault.yml)."
+  value       = var.enable_monitoring ? "http://${module.monitoring[0].public_ip}:${var.monitoring_ui_ports["grafana"]}" : null
+}
+
+output "prometheus_url" {
+  description = "Prometheus UI (Status > Targets shows every scraped endpoint)."
+  value       = var.enable_monitoring ? "http://${module.monitoring[0].public_ip}:${var.monitoring_ui_ports["prometheus"]}" : null
 }

@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+# ============================================================================
+# YOUR EXERCISE: WHERE do the alerts go?
+# For now every alert goes to the "null" receiver (nowhere): you can see them
+# in the Alertmanager UI (port 9093) but nobody is notified.
+#
+# TODO - send them to a Discord channel:
+#   1. Discord: channel settings > Integrations > Webhooks > New webhook > copy URL
+#   2. Store the URL in the vault (it is a secret: anyone with it can post):
+#        ansible-vault edit group_vars/all/vault.yml   ->  vault_discord_webhook_url: "https://..."
+#   3. Add a receiver with "discord_configs" and route the alerts to it.
+#      Docs: https://prometheus.io/docs/alerting/latest/configuration/#discord_config
+# ============================================================================
+
+route:
+  receiver: "null"
+  group_by: [alertname, job]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: "null"

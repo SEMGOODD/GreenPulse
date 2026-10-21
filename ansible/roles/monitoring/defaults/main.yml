@@ -1,0 +1,17 @@
+---
+monitoring_dir: /opt/monitoring
+
+# Pinned versions: an update is a deliberate change, reviewed in a PR.
+monitoring_prometheus_image: prom/prometheus:v3.15.0
+monitoring_alertmanager_image: prom/alertmanager:v0.34.1
+monitoring_grafana_image: grafana/grafana:13.2.4
+
+monitoring_prometheus_port: 9090
+monitoring_alertmanager_port: 9093
+monitoring_grafana_port: 3000
+
+monitoring_scrape_interval: 15s
+# How long Prometheus keeps the metrics (the disk is 20 GB).
+monitoring_prometheus_retention: 7d
+
+monitoring_grafana_admin_password: "{{ vault_grafana_admin_password }}"

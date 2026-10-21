@@ -1,0 +1,24 @@
+# ============================================================================
+# YOUR EXERCISE: alert rules. Prometheus evaluates them every
+# evaluation_interval; when the expression is true for "for:", the alert fires
+# and is sent to Alertmanager.
+#
+# Ideas (from the most important to the least):
+#   - InstanceDown          a target stopped answering             up == 0
+#   - NoReadings            no reading ingested for 2 min          rate(...) == 0
+#   - HighErrorRate         more than 5 % of HTTP answers are 5xx
+#   - WorkerLagging         alert-worker backlog keeps growing
+#   - DiskAlmostFull        less than 15 % free disk
+#
+# Model of one rule:
+#   - alert: InstanceDown
+#     expr: up == 0
+#     for: 1m
+#     labels:
+#       severity: critical
+#     annotations:
+#       summary: "{{ $labels.job }} on {{ $labels.instance }} is down"
+# ============================================================================
+groups:
+  - name: greenpulse
+    rules: []

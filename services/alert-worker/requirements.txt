@@ -1,1 +1,2 @@
 psycopg[binary]>=3.2,<4.0
+prometheus-client>=0.20,<1.0

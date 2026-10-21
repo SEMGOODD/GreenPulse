@@ -25,12 +25,14 @@
   become: true
   roles:
     - common
+    - node_exporter
 
 - name: Deploy PostgreSQL on the BDD VM
   hosts: bdd
   become: true
   roles:
     - postgres
+    - postgres_exporter
 
 - name: Deploy the GreenPulse microservices on the APP VM
   hosts: app
@@ -38,3 +40,12 @@
   roles:
     - docker
     - app
+
+# Only runs when Terraform created the monitoring VM (enable_monitoring = true):
+# otherwise the "monitoring" group is empty and the play is skipped.
+- name: Deploy Prometheus, Alertmanager and Grafana on the MONITORING VM
+  hosts: monitoring
+  become: true
+  roles:
+    - docker
+    - monitoring

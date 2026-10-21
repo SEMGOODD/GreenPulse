@@ -135,3 +135,60 @@ variable "run_ansible" {
   type        = bool
   default     = true
 }
+
+
+# MONITORING VM (Prometheus, Grafana, Alertmanager), optional
+
+variable "enable_monitoring" {
+  description = "Create the monitoring VM and its firewall rules. Costs one more VM while true."
+  type        = bool
+  default     = false
+}
+
+variable "monitoring_instance_type" {
+  description = "Instance type of the MONITORING VM (t3.small = 2 GiB RAM)."
+  type        = string
+  default     = "t3.small"
+}
+
+variable "monitoring_disk_size_gb" {
+  description = "Root disk size of the MONITORING VM in GB (holds the Prometheus data)."
+  type        = number
+  default     = 20
+}
+
+variable "monitoring_private_ip" {
+  description = "Fixed private IP of the MONITORING VM. Must be inside public_subnet_cidr."
+  type        = string
+  default     = "10.0.1.30"
+}
+
+variable "monitoring_ui_ports" {
+  description = "Monitoring web UIs, reachable from allowed_ssh_cidr only."
+  type        = map(number)
+  default = {
+    grafana      = 3000
+    prometheus   = 9090
+    alertmanager = 9093
+  }
+}
+
+variable "app_metrics_ports" {
+  description = "Metrics ports on the APP VM, reachable from the monitoring VM only."
+  type        = map(number)
+  default = {
+    node_exporter = 9100
+    alert_worker  = 9101
+    ingest_api    = 9102
+    query_api     = 9103
+  }
+}
+
+variable "bdd_metrics_ports" {
+  description = "Metrics ports on the BDD VM, reachable from the monitoring VM only."
+  type        = map(number)
+  default = {
+    node_exporter     = 9100
+    postgres_exporter = 9187
+  }
+}

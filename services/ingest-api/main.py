@@ -2,6 +2,8 @@
 
 POST /readings  -> 201 + id of the stored reading
 GET  /health    -> liveness and database check (used by the Docker healthcheck)
+Prometheus metrics are served on a separate port (METRICS_PORT, default 9102),
+so they are never reachable through the application port.
 """
 
 import logging
@@ -10,6 +12,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException, status
+from prometheus_client import Counter, Gauge, start_http_server
+from prometheus_fastapi_instrumentator import Instrumentator
 from psycopg.conninfo import make_conninfo
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, Field, field_validator
@@ -27,6 +31,15 @@ DB_CONNINFO = make_conninfo(
     connect_timeout=5,
 )
 
+METRICS_PORT = int(os.environ.get("METRICS_PORT", "9102"))
+
+# Business metrics (HTTP metrics are added by the Instrumentator below).
+READINGS_INGESTED = Counter(
+    "greenpulse_readings_ingested_total", "Readings stored, per sensor.", ["sensor_id"])
+LAST_READING = Gauge(
+    "greenpulse_sensor_last_reading_timestamp_seconds",
+    "Unix time of the last reading stored, per sensor.", ["sensor_id"])
+
 # A pool keeps a few connections open instead of opening one per request.
 pool = ConnectionPool(DB_CONNINFO, min_size=1, max_size=4, open=False)
 
@@ -34,11 +47,15 @@ pool = ConnectionPool(DB_CONNINFO, min_size=1, max_size=4, open=False)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     pool.open()
+    start_http_server(METRICS_PORT)
     yield
     pool.close()
 
 
 app = FastAPI(title="GreenPulse ingest-api", lifespan=lifespan)
+# Request count, latency and status per endpoint. /health is excluded: the
+# Docker healthcheck calls it every 10 s and would drown the real traffic.
+Instrumentator(excluded_handlers=["/health"]).instrument(app)
 
 
 class Reading(BaseModel):
@@ -78,6 +95,8 @@ def create_reading(reading: Reading) -> dict:
                 reading.soil_moisture,
             ),
         ).fetchone()
+    READINGS_INGESTED.labels(reading.sensor_id).inc()
+    LAST_READING.labels(reading.sensor_id).set_to_current_time()
     return {"id": row[0]}
 
 

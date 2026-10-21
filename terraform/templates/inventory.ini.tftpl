@@ -7,8 +7,16 @@ ${bdd_name} ansible_host=${bdd_public_ip}
 [app]
 ${app_name} ansible_host=${app_public_ip}
 
+%{ if monitoring_public_ip != "" ~}
+[monitoring]
+${monitoring_name} ansible_host=${monitoring_public_ip}
+
+%{ endif ~}
 [all:vars]
 ansible_user=${ssh_user}
 ansible_ssh_private_key_file=${ssh_private_key_path}
 app_private_ip=${app_private_ip}
 bdd_private_ip=${bdd_private_ip}
+%{ if monitoring_private_ip != "" ~}
+monitoring_private_ip=${monitoring_private_ip}
+%{ endif ~}

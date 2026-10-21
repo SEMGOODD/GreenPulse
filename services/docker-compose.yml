@@ -20,6 +20,9 @@ x-thresholds: &thresholds
   SOIL_MOISTURE_MIN: ${SOIL_MOISTURE_MIN:-20}
   SOIL_MOISTURE_MAX: ${SOIL_MOISTURE_MAX:-}
 
+# Prometheus metrics ports are published on ONE address only: 127.0.0.1 by
+# default (your laptop), the VM's private IP in production (set by Ansible).
+# They are never part of the public application port.
 x-common: &common
   restart: unless-stopped
   # Rotate container logs so they cannot fill the 20 GB disk.
@@ -36,9 +39,13 @@ services:
     image: ${IMAGE_REGISTRY:-local}/greenpulse-ingest-api:${IMAGE_TAG:-dev}
     environment:
       <<: *db-env
-    # No "ports:": only reachable inside the Docker network (by the simulator).
+      METRICS_PORT: 9102
+    # The API itself is only reachable inside the Docker network (by the simulator);
+    # only its metrics port is published, for Prometheus.
     expose:
       - "8000"
+    ports:
+      - "${METRICS_HOST_IP:-127.0.0.1}:9102:9102"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 10s
@@ -55,6 +62,9 @@ services:
       <<: [*db-env, *thresholds]
       POLL_SECONDS: ${POLL_SECONDS:-5}
       RETENTION_DAYS: ${RETENTION_DAYS:-7}
+      METRICS_PORT: 9101
+    ports:
+      - "${METRICS_HOST_IP:-127.0.0.1}:9101:9101"
     healthcheck:
       # Healthy while the worker keeps touching its heartbeat file (< 60 s old).
       test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.path.getmtime('/tmp/heartbeat') > 60)"]
@@ -73,9 +83,11 @@ services:
       HELLO_TABLE: ${HELLO_TABLE:-${DB_USER}}
       SENSOR_IDS: ${SENSOR_IDS:-greenhouse-north,greenhouse-south,nursery}
       REFRESH_SECONDS: ${REFRESH_SECONDS:-5}
+      METRICS_PORT: 9103
     # The only service exposed to the outside: the dashboard on port 8080.
     ports:
       - "${APP_PORT:-8080}:8000"
+      - "${METRICS_HOST_IP:-127.0.0.1}:9103:9103"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 10s

@@ -1,0 +1,4 @@
+---
+node_exporter_port: 9100
+# Listen on the private IP only: the metrics are never on the public interface.
+node_exporter_listen_address: "{{ ansible_facts['default_ipv4']['address'] }}:{{ node_exporter_port }}"

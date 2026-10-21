@@ -37,6 +37,11 @@ module "network" {
   allowed_ssh_cidr   = var.allowed_ssh_cidr
   app_port           = var.app_port
   db_port            = var.db_port
+
+  enable_monitoring   = var.enable_monitoring
+  monitoring_ui_ports = var.monitoring_ui_ports
+  app_metrics_ports   = var.app_metrics_ports
+  bdd_metrics_ports   = var.bdd_metrics_ports
 }
 
 module "bdd" {
@@ -65,4 +70,19 @@ module "app" {
   key_name           = aws_key_pair.admin.key_name
 
   depends_on = [module.bdd]
+}
+
+# Optional: count = 0 means the module creates nothing (and costs nothing).
+module "monitoring" {
+  source = "./modules/monitoring"
+  count  = var.enable_monitoring ? 1 : 0
+
+  instance_name      = "${var.project_name}-monitoring"
+  ami_id             = data.aws_ami.ubuntu.id
+  instance_type      = var.monitoring_instance_type
+  disk_size_gb       = var.monitoring_disk_size_gb
+  subnet_id          = module.network.public_subnet_id
+  private_ip         = var.monitoring_private_ip
+  security_group_ids = [module.network.monitoring_security_group_id]
+  key_name           = aws_key_pair.admin.key_name
 }
